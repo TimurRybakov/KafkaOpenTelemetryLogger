@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text.Json;
 using OpenTelemetry;
 
 System.Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -34,17 +33,26 @@ app.MapGet("/test", (ILogger<Program> logger) =>
     using var _ = SignedDocsOtel.BeginScope(new SignedDocContext(123, null));
 
     // Обычный лог
-    logger.LogTrace("Обычный лог из AService");
-    logger.LogDebug("Обычный лог из AService");
-    logger.LogInformation("Обычный лог из AService");
-    logger.LogWarning("Обычный лог из AService");
-    logger.LogError("Обычный лог из AService");
-    logger.LogCritical("Обычный лог из AService");
+    logger.LogTrace("Trace лог из AService");
+    logger.LogDebug("Debug лог из AService");
+    logger.LogInformation("Information лог из AService");
+    logger.LogWarning("Warning лог из AService");
+    logger.LogError("Error лог из AService");
+    logger.LogCritical("Critical лог из AService");
+
 
     // Лог в DB
-    logger.LogSignedDocs("Чувствительная операция: логируем в SignedDocs");
+    logger.LogSignedDocs("Логируем в SignedDocs в AService");
+
+    LogMethod();
 
     return Results.Ok();
+
+    void LogMethod()
+    {
+        logger.LogSignedDocs("Логируем в SignedDocs внутри метода LogMethod() в AService");
+        logger.LogInformation("Был лог в SignedDocs в LogMethod сервиса AService");
+    }
 })
 .WithName("TestLogger")
 .WithOpenApi();

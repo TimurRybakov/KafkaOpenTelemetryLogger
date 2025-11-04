@@ -23,7 +23,7 @@ processors:
       exclude:
         match_type: exists
         record_attributes:
-          - key: SignedDocsId
+          - key: SignedDocId
 
   # Фильтр, пропускающий только SignedDocs-логи
   filter/only_signed_docs:
@@ -31,9 +31,9 @@ processors:
       include:
         match_type: exists
         record_attributes:
-          - key: SignedDocsId
+          - key: SignedDocId
 
-  # Фильтр для консоли, пропускающий только ошибки и предупреждения
+  # Фильтр, пропускающий только ошибки и предупреждения
   filter/warn_plus:
     logs:
       log_record:
@@ -45,20 +45,18 @@ exporters:
   # Экспорт в Kafka для всех логов
   kafka:
     brokers:
-      #- "${KAFKA_BROKERS}" #kafka:9092
-      - kafka:9092
-    topic: "logs"
-    tls:
-      insecure: true # разрешить HTTP
+      - "${KAFKA_BROKERS}"
+    logs:
+      topic: "logs"
+      encoding: "otlp_json"
 
   # Экспорт чувствительных логов SignedDocs в отдельный топик Kafka
   kafka/signed_docs:
     brokers:
-      #- "${KAFKA_BROKERS}" #kafka:9092
-      - kafka:9092
-    topic: "logs-signed-docs"
-    tls:
-      insecure: true # разрешить HTTP
+      - "${KAFKA_BROKERS}"
+    logs:
+      topic: "logs-signed-docs"
+      encoding: "otlp_json"
 
   # Seq, только для разработки
   otlphttp/seq:
@@ -67,10 +65,6 @@ exporters:
       insecure: true # разрешить HTTP
     headers:
       X-Seq-ApiKey: "${SEQ_API_KEY}"
-
-  # Консоль
-  debug/console:
-    verbosity: basic
 
 service:
   pipelines:
@@ -92,16 +86,3 @@ service:
       processors: [filter/only_signed_docs, memory_limiter, batch]
       exporters: [kafka/signed_docs]
 
-    # Только WARN+ → консоль
-    logs/console:
-      receivers: [otlp]
-      processors: [filter/exclude_signed_docs, filter/warn_plus, memory_limiter, batch]
-      exporters: [debug/console]
-
-    # metrics/seq:
-    #   receivers: [otlp]
-    #   exporters: [otlphttp/seq]
-
-    # traces/seq:
-    #   receivers: [otlp]
-    #   exporters: [otlphttp/seq]

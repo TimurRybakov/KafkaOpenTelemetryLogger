@@ -55,11 +55,6 @@ public static class Extensions
             if (!string.IsNullOrEmpty(endpoint))
             {
                 logging.AddOtlpExporter();
-                //options =>
-                //{
-                //    options.Endpoint = new Uri(endpoint);
-                //    options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
-                //});
             }
         });
 
@@ -83,22 +78,6 @@ public static class Extensions
                     //.AddGrpcClientInstrumentation()
                     .AddHttpClientInstrumentation();
             });
-            //.WithLogging(logging =>
-            //{
-            //    var endpoint = builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
-            //    if (!string.IsNullOrEmpty(endpoint))
-            //    {
-            //        logging.AddOtlpExporter(options =>
-            //        {
-            //            options.Endpoint = new Uri(endpoint);
-            //            options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
-            //        });
-            //    }
-            //}, options =>
-            //{
-            //    options.IncludeFormattedMessage = true;
-            //    options.IncludeScopes = true;
-            //});
 
         //builder.AddOpenTelemetryExporters();
 

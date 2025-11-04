@@ -1,4 +1,4 @@
-using System.Net.Sockets;
+﻿using System.Net.Sockets;
 using Aspire.Hosting;
 using Projects;
 
@@ -22,13 +22,8 @@ var collector = builder.AddContainer("otel-collector", "otel/opentelemetry-colle
     .WithBindMount("./otel-collector-config.yaml", "/etc/otelcol-config.yaml")
     .WithReference(seq)
     .WithReference(kafka)
-    .WithEnvironment("KAFKA_BROKERS", "kafka:9092")
-    //.WithEnvironment(context =>
-    //{
-    //    var kafkaEndpoint = kafka.GetEndpoint("tcp");
-    //    var kafkaAddress = $"{kafkaEndpoint.Host}:{kafkaEndpoint.Port}";
-    //    context.EnvironmentVariables["KAFKA_BROKERS"] = kafkaAddress;
-    //})
+    .WaitFor(kafka)
+    .WithEnvironment("KAFKA_BROKERS", "kafka:9093")
     .WithEnvironment("SEQ_ENDPOINT", "http://seq:5341/ingest/otlp")
     .WithEnvironment("SEQ_API_KEY", seqApiKey)
     .WithArgs("--config", "/etc/otelcol-config.yaml");
