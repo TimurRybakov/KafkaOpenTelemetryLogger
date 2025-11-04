@@ -4,10 +4,10 @@ using Projects;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-var password = builder.AddParameter("seq-admin-password", "test", secret: true);
+var seqPassword = builder.AddParameter("seq-admin-password", "test", secret: true);
 var seqApiKey = "devseqkey12345678";
 
-var seq = builder.AddSeq("seq", password, port: 5341)
+var seq = builder.AddSeq("seq", seqPassword, port: 5341)
     .WithEnvironment("SEQ_API_KEY", seqApiKey)
     .WithLifetime(ContainerLifetime.Persistent);
 
@@ -28,6 +28,23 @@ var collector = builder.AddContainer("otel-collector", "otel/opentelemetry-colle
     .WithEnvironment("SEQ_API_KEY", seqApiKey)
     .WithArgs("--config", "/etc/otelcol-config.yaml");
 
+//var openSearchPassword = builder.AddParameter("seq-admin-password", "test", secret: true);
+var openSearch = builder.AddContainer("opensearch", "opensearchproject/opensearch", "3.3.2")
+    .WithEnvironment("cluster.name", "opensearch-dev")
+    .WithEnvironment("node.name", "opensearch-node")
+    .WithEnvironment("discovery.type", "single-node") // ← важно для одной ноды
+    .WithEnvironment("bootstrap.memory_lock", "true")
+    .WithEnvironment("OPENSEARCH_JAVA_OPTS", "-Xms512m -Xmx512m")
+    .WithEnvironment("OPENSEARCH_INITIAL_ADMIN_PASSWORD", "test")
+    .WithBindMount("opensearch-data", "/usr/share/opensearch/data")
+    .WithEndpoint(port: 9200, targetPort: 9200, name: "http")
+    .WithEndpoint(port: 9600, targetPort: 9600, name: "perf")
+    .WithLifetime(ContainerLifetime.Persistent);
+
+builder.AddContainer("opensearch-dashboards", "opensearchproject/opensearch-dashboards", "2.19.3")
+    .WithEndpoint(port: 5601, targetPort: 5601)
+    .WithEnvironment("OPENSEARCH_HOSTS", "[\"https://opensearch:9200\"]");
+
 var aService = builder.AddProject<KafkaOpenTelemetryLogger_AService>("a-service")
     .WithEnvironment(context =>
     {
@@ -38,6 +55,7 @@ var aService = builder.AddProject<KafkaOpenTelemetryLogger_AService>("a-service"
     .WithReference(seq)
     .WaitFor(kafka)
     .WaitFor(collector)
+    .WaitFor(openSearch)
     .WaitFor(seq);
 
 builder.Build().Run();
