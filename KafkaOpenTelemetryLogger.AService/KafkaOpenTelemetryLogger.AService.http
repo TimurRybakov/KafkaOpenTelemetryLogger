@@ -1,0 +1,6 @@
+@KafkaOpenTelemetryLogger.AService_HostAddress = https://localhost:7149
+
+GET {{KafkaOpenTelemetryLogger.AService_HostAddress}}/test/
+Accept: application/json
+
+###

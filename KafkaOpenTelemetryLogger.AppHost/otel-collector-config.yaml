@@ -1,0 +1,107 @@
+﻿receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: otel-collector:4317
+      http:
+        endpoint: otel-collector:4318
+        cors:
+          allowed_origins:
+            - "http://*"
+            - "https://*"
+
+processors:
+
+  memory_limiter:
+    check_interval: 5s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+
+  # Фильтр, исключающий SignedDocs-логи
+  filter/exclude_signed_docs:
+    logs:
+      exclude:
+        match_type: exists
+        record_attributes:
+          - key: SignedDocsId
+
+  # Фильтр, пропускающий только SignedDocs-логи
+  filter/only_signed_docs:
+    logs:
+      include:
+        match_type: exists
+        record_attributes:
+          - key: SignedDocsId
+
+  # Фильтр для консоли, пропускающий только ошибки и предупреждения
+  filter/warn_plus:
+    logs:
+      log_record:
+        - 'severity_number >= SEVERITY_NUMBER_WARN'
+
+  batch:
+
+exporters:
+  # Экспорт в Kafka для всех логов
+  kafka:
+    brokers:
+      #- "${KAFKA_BROKERS}" #kafka:9092
+      - kafka:9092
+    topic: "logs"
+    tls:
+      insecure: true # разрешить HTTP
+
+  # Экспорт чувствительных логов SignedDocs в отдельный топик Kafka
+  kafka/signed_docs:
+    brokers:
+      #- "${KAFKA_BROKERS}" #kafka:9092
+      - kafka:9092
+    topic: "logs-signed-docs"
+    tls:
+      insecure: true # разрешить HTTP
+
+  # Seq, только для разработки
+  otlphttp/seq:
+    endpoint: "${SEQ_ENDPOINT}"
+    tls:
+      insecure: true # разрешить HTTP
+    headers:
+      X-Seq-ApiKey: "${SEQ_API_KEY}"
+
+  # Консоль
+  debug/console:
+    verbosity: basic
+
+service:
+  pipelines:
+    # Все логи → Seq - только для разработки
+    logs/seq:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/seq]
+
+    # Все логи, кроме SignedDocs → Kafka топик logs
+    logs/all:
+      receivers: [otlp]
+      processors: [filter/exclude_signed_docs, memory_limiter, batch]
+      exporters: [kafka]
+
+    # Логи SignedDocs → Kafka топик logs-signed-docs
+    logs/db:
+      receivers: [otlp]
+      processors: [filter/only_signed_docs, memory_limiter, batch]
+      exporters: [kafka/signed_docs]
+
+    # Только WARN+ → консоль
+    logs/console:
+      receivers: [otlp]
+      processors: [filter/exclude_signed_docs, filter/warn_plus, memory_limiter, batch]
+      exporters: [debug/console]
+
+    # metrics/seq:
+    #   receivers: [otlp]
+    #   exporters: [otlphttp/seq]
+
+    # traces/seq:
+    #   receivers: [otlp]
+    #   exporters: [otlphttp/seq]
