@@ -1,4 +1,10 @@
-﻿receivers:
+﻿extensions:
+  basicauth/client:
+    client_auth:
+      username: "${OPENSEARCH_USERNAME}"
+      password: "${OPENSEARCH_PASSWORD}"
+
+receivers:
   otlp:
     protocols:
       grpc:
@@ -42,13 +48,40 @@ processors:
   batch:
 
 exporters:
+  # Seq, только для разработки
+  otlphttp/seq:
+    endpoint: "${SEQ_ENDPOINT}"
+    tls:
+      insecure: true # разрешить HTTP
+    headers:
+      X-Seq-ApiKey: "${SEQ_API_KEY}"
+
+  # Экспорт в Opensearch для всех логов
+  opensearch:
+    http:
+      endpoint: https://opensearch:9200
+      auth:
+        authenticator: basicauth/client
+      tls:
+        insecure_skip_verify: true        # ← разрешить самоподписанный сертификат (для dev)
+    # Logs configuration
+    logs_index: "otel-logs-%{service.name}"
+    logs_index_fallback: "default-service"
+    logs_index_time_format: "yyyy.MM.dd"
+    # Traces configuration  
+    traces_index: "otel-traces-%{service.name}"
+    traces_index_fallback: "default-service"
+    traces_index_time_format: "yyyy.MM.dd"
+    sending_queue:
+      batch:
+
   # Экспорт в Kafka для всех логов
-  kafka:
-    brokers:
-      - "${KAFKA_BROKERS}"
-    logs:
-      topic: "logs"
-      encoding: "otlp_json"
+  # kafka:
+  #   brokers:
+  #     - "${KAFKA_BROKERS}"
+  #   logs:
+  #     topic: "logs"
+  #     encoding: "otlp_json"
 
   # Экспорт чувствительных логов SignedDocs в отдельный топик Kafka
   kafka/signed_docs:
@@ -58,15 +91,8 @@ exporters:
       topic: "logs-signed-docs"
       encoding: "otlp_json"
 
-  # Seq, только для разработки
-  otlphttp/seq:
-    endpoint: "${SEQ_ENDPOINT}"
-    tls:
-      insecure: true # разрешить HTTP
-    headers:
-      X-Seq-ApiKey: "${SEQ_API_KEY}"
-
 service:
+  extensions: [basicauth/client]
   pipelines:
     # Все логи → Seq - только для разработки
     logs/seq:
@@ -74,11 +100,17 @@ service:
       processors: [memory_limiter, batch]
       exporters: [otlphttp/seq]
 
-    # Все логи, кроме SignedDocs → Kafka топик logs
-    logs/all:
+    # Все логи, кроме SignedDocs → Opensearch
+    logs/opensearch:
       receivers: [otlp]
       processors: [filter/exclude_signed_docs, memory_limiter, batch]
-      exporters: [kafka]
+      exporters: [opensearch]
+
+    ## Все логи, кроме SignedDocs → Kafka топик logs
+    # logs/all:
+    #   receivers: [otlp]
+    #   processors: [filter/exclude_signed_docs, memory_limiter, batch]
+    #   exporters: [kafka]
 
     # Логи SignedDocs → Kafka топик logs-signed-docs
     logs/db:
