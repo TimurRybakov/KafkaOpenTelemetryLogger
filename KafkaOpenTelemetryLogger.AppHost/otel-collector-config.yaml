@@ -39,11 +39,11 @@ processors:
         record_attributes:
           - key: SignedDocId
 
-  # Фильтр, пропускающий только ошибки и предупреждения
-  filter/warn_plus:
-    logs:
-      log_record:
-        - 'severity_number >= SEVERITY_NUMBER_WARN'
+  # # Фильтр, пропускающий только ошибки и предупреждения
+  # filter/warn_plus:
+  #   logs:
+  #     log_record:
+  #       - 'severity_number >= SEVERITY_NUMBER_WARN'
 
   batch:
 
@@ -55,6 +55,12 @@ exporters:
       insecure: true # разрешить HTTP
     headers:
       X-Seq-ApiKey: "${SEQ_API_KEY}"
+    retry_on_failure:
+      enabled: true
+    sending_queue:
+      enabled: true
+      num_consumers: 1
+      queue_size: 50000
 
   # Экспорт в Opensearch для всех логов
   opensearch:
@@ -72,16 +78,12 @@ exporters:
     traces_index: "otel-traces-%{service.name}"
     traces_index_fallback: "default-service"
     traces_index_time_format: "yyyy.MM.dd"
+    retry_on_failure:
+      enabled: true
     sending_queue:
-      batch:
-
-  # Экспорт в Kafka для всех логов
-  # kafka:
-  #   brokers:
-  #     - "${KAFKA_BROKERS}"
-  #   logs:
-  #     topic: "logs"
-  #     encoding: "otlp_json"
+      enabled: true
+      num_consumers: 2
+      queue_size: 50000
 
   # Экспорт чувствительных логов SignedDocs в отдельный топик Kafka
   kafka/signed_docs:
@@ -90,6 +92,15 @@ exporters:
     logs:
       topic: "logs-signed-docs"
       encoding: "otlp_json"
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 600s
+    sending_queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 50000
 
 service:
   extensions: [basicauth/client]
@@ -106,14 +117,8 @@ service:
       processors: [filter/exclude_signed_docs, memory_limiter, batch]
       exporters: [opensearch]
 
-    ## Все логи, кроме SignedDocs → Kafka топик logs
-    # logs/all:
-    #   receivers: [otlp]
-    #   processors: [filter/exclude_signed_docs, memory_limiter, batch]
-    #   exporters: [kafka]
-
     # Логи SignedDocs → Kafka топик logs-signed-docs
-    logs/db:
+    logs/kafka/signed_docs:
       receivers: [otlp]
       processors: [filter/only_signed_docs, memory_limiter, batch]
       exporters: [kafka/signed_docs]

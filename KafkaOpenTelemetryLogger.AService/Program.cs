@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using OpenTelemetry;
+using KafkaOpenTelemetryLogger.SignedDocs;
 
-System.Console.OutputEncoding = System.Text.Encoding.UTF8;
-System.Console.InputEncoding = System.Text.Encoding.UTF8;
+Console.OutputEncoding = System.Text.Encoding.UTF8;
+Console.InputEncoding = System.Text.Encoding.UTF8;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,6 +12,11 @@ builder.AddServiceDefaults();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddHttpClient<BService>((serviceProvider, client) =>
+{
+    client.BaseAddress = new Uri("https://b-service");
+});
 
 var app = builder.Build();
 
@@ -26,7 +31,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.MapGet("/test", (ILogger<Program> logger) =>
+app.MapGet("/test", async (ILogger<Program> logger, BService bService) =>
 {
     using var activity = new Activity("logging").Start();
 
@@ -44,14 +49,20 @@ app.MapGet("/test", (ILogger<Program> logger) =>
     // Лог в DB
     logger.LogSignedDocs("Логируем в SignedDocs в AService");
 
-    LogMethod();
+    var response = await CallTestOnBService();
 
-    return Results.Ok();
+    return response;
 
-    void LogMethod()
+    async Task<HttpResponseMessage> CallTestOnBService()
     {
-        logger.LogSignedDocs("Логируем в SignedDocs внутри метода LogMethod() в AService");
-        logger.LogInformation("Был лог в SignedDocs в LogMethod сервиса AService");
+        logger.LogSignedDocs("Логируем в SignedDocs внутри метода CallTestOnBService() в AService");
+        logger.LogInformation("Был лог в SignedDocs в CallTestOnBService сервиса AService");
+
+        var response = await bService.GetTestAsync();
+
+        logger.LogInformation("Был вызов http get /test сервиса BService из сервиса AService");
+
+        return response;
     }
 })
 .WithName("TestLogger")
@@ -59,72 +70,12 @@ app.MapGet("/test", (ILogger<Program> logger) =>
 
 app.Run();
 
-public static class LoggerExtensions
+public sealed class BService(HttpClient client)
 {
-    public static void LogSignedDocs(this ILogger logger, string? message, params object?[] args)
+    public async Task<HttpResponseMessage> GetTestAsync()
     {
-        List<KeyValuePair<string, object>>? scopeList = null;
+        var response = await client.GetAsync($"test/");
 
-        foreach (var item in Baggage.Current)
-        {
-            // Фильтруем по префиксу (гибко!)
-            if (item.Key.StartsWith("SignedDoc.", StringComparison.Ordinal))
-            {
-                scopeList ??= [];
-
-                if (item.Key.EndsWith("Id", StringComparison.Ordinal))
-                {
-                    if (int.TryParse(item.Value, out int intValue))
-                    {
-                        scopeList.Add(new("SignedDocId", intValue));
-                    }
-                }
-                else if (item.Key.EndsWith("ParentId", StringComparison.Ordinal))
-                {
-                    if (int.TryParse(item.Value, out int intValue))
-                    {
-                        scopeList.Add(new("SignedDocParentId", intValue));
-                    }
-                }
-            }
-        }
-
-        if (scopeList is not null)
-        {
-            using var scope = logger.BeginScope(scopeList);
-
-            logger.LogInformation(message, args);
-
-            return;
-        }
-
-        logger.LogInformation(message, args);
+        return response;
     }
 }
-
-public static class SignedDocsOtel
-{
-    public static IDisposable BeginScope(SignedDocContext context)
-    {
-        var baggage = Baggage.Current;
-
-        baggage = baggage.SetBaggage("SignedDoc.Id", context.SignedDocId.ToString());
-        if (context.SignedDocParentId is not null)
-            baggage = baggage.SetBaggage("SignedDoc.ParentId", context.SignedDocParentId.ToString());
-
-        var original = Baggage.Current;
-        Baggage.Current = baggage;
-        return new BaggageResetOnDispose(original);
-    }
-
-    private sealed class BaggageResetOnDispose : IDisposable
-    {
-        private readonly Baggage _original;
-
-        public BaggageResetOnDispose(Baggage original) => _original = original;
-
-        public void Dispose() => Baggage.Current = _original;
-    }
-}
-
-public sealed record SignedDocContext(int SignedDocId, int? SignedDocParentId);

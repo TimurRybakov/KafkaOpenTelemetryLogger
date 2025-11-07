@@ -1,4 +1,3 @@
-﻿using Aspire.Hosting;
 using Projects;
 
 var builder = DistributedApplication.CreateBuilder(args);
@@ -25,7 +24,7 @@ var openSearch = builder.AddContainer("opensearch", "opensearchproject/opensearc
     .WithEnvironment("OPENSEARCH_INITIAL_ADMIN_PASSWORD", openSearchPassword)
     //.WithBindMount("opensearch-data", "/usr/share/opensearch/data")
     //.WithBindMount("./opensearch.yml", "/usr/share/opensearch/config/opensearch.yml")
-    .WithEnvironment("cluster.routing.allocation.disk.threshold_enabled", "false") // ← работает
+    .WithEnvironment("cluster.routing.allocation.disk.threshold_enabled", "false")
     .WithEndpoint(port: 9200, targetPort: 9200, name: "http")
     .WithEndpoint(port: 9600, targetPort: 9600, name: "perf")
     .WithLifetime(ContainerLifetime.Persistent);
@@ -50,7 +49,7 @@ var collector = builder.AddContainer("otel-collector", "otel/opentelemetry-colle
     .WithEnvironment("OPENSEARCH_PASSWORD", openSearchPassword)
     .WithArgs("--config", "/etc/otelcol-config.yaml");
 
-var aService = builder.AddProject<KafkaOpenTelemetryLogger_AService>("a-service")
+var bService = builder.AddProject<KafkaOpenTelemetryLogger_BService>("b-service")
     .WithEnvironment(context =>
     {
         context.EnvironmentVariables["OTEL_EXPORTER_OTLP_ENDPOINT"] = collector.GetEndpoint("otlp-http").Url;
@@ -62,5 +61,20 @@ var aService = builder.AddProject<KafkaOpenTelemetryLogger_AService>("a-service"
     .WaitFor(collector)
     .WaitFor(openSearch)
     .WaitFor(seq);
+
+var aService = builder.AddProject<KafkaOpenTelemetryLogger_AService>("a-service")
+    .WithEnvironment(context =>
+    {
+        context.EnvironmentVariables["OTEL_EXPORTER_OTLP_ENDPOINT"] = collector.GetEndpoint("otlp-http").Url;
+        context.EnvironmentVariables["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf";
+    })
+    .WithReference(kafka)
+    .WithReference(seq)
+    .WithReference(bService)
+    .WaitFor(kafka)
+    .WaitFor(collector)
+    .WaitFor(openSearch)
+    .WaitFor(seq)
+    .WaitFor(bService);
 
 builder.Build().Run();
